@@ -440,6 +440,7 @@ def generate_image(
     guidance: Optional[float] = None,
     open_result: bool = True,
     verbose: bool = False,
+    cloud: str = "runpod",
 ) -> Optional[str]:
     """
     Generate image from text prompt.
@@ -480,7 +481,20 @@ def generate_image(
             "bucket_name": r2_config["bucket_name"],
         }
 
-    result, elapsed = call_endpoint(payload)
+    try:
+        from cloud_gpu import call_cloud_endpoint
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from cloud_gpu import call_cloud_endpoint
+
+    result, elapsed = call_cloud_endpoint(
+        provider=cloud,
+        payload=payload,
+        tool_name="flux2",
+        timeout=600,
+        progress_label="Generating image",
+        verbose=True,
+    )
 
     if "error" in result:
         log(f"Generation failed: {result['error']}", "error")
@@ -500,10 +514,6 @@ def generate_image(
     log(f"Output: {output_size[0]}x{output_size[1]}", "dim")
     log(f"Seed: {result.get('seed', 'unknown')}", "dim")
 
-    if verbose:
-        cost = (elapsed / 3600) * 0.34
-        log(f"Est. cost: ${cost:.4f}", "dim")
-
     if open_result and sys.platform == "darwin":
         import subprocess
         subprocess.run(["open", output_path], check=False)
@@ -520,6 +530,7 @@ def edit_image(
     guidance: Optional[float] = None,
     open_result: bool = True,
     verbose: bool = False,
+    cloud: str = "runpod",
 ) -> Optional[str]:
     """
     Edit image(s) with the given prompt.
@@ -571,7 +582,20 @@ def edit_image(
             "bucket_name": r2_config["bucket_name"],
         }
 
-    result, elapsed = call_endpoint(payload)
+    try:
+        from cloud_gpu import call_cloud_endpoint
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from cloud_gpu import call_cloud_endpoint
+
+    result, elapsed = call_cloud_endpoint(
+        provider=cloud,
+        payload=payload,
+        tool_name="flux2",
+        timeout=600,
+        progress_label="Editing image",
+        verbose=True,
+    )
 
     if "error" in result:
         log(f"Edit failed: {result['error']}", "error")
@@ -590,10 +614,6 @@ def edit_image(
     log(f"Time: {elapsed:.1f}s total, {inference_ms/1000:.1f}s inference", "dim")
     log(f"Output: {output_size[0]}x{output_size[1]}", "dim")
     log(f"Seed: {result.get('seed', 'unknown')}", "dim")
-
-    if verbose:
-        cost = (elapsed / 3600) * 0.34
-        log(f"Est. cost: ${cost:.4f}", "dim")
 
     if open_result and sys.platform == "darwin":
         import subprocess
@@ -955,11 +975,13 @@ Examples:
     adv_group.add_argument("--guidance", "-g", type=float, help="Guidance scale (default: 1.0 for generate, 4.0 for edit)")
     adv_group.add_argument("--verbose", action="store_true", help="Show detailed output")
 
-    # Setup
-    setup_group = parser.add_argument_group("Setup")
-    setup_group.add_argument("--setup", action="store_true", help="Set up RunPod endpoint")
-    setup_group.add_argument("--setup-gpu", type=str, default="AMPERE_24,ADA_24",
-                             help="GPU type(s) for endpoint, comma-separated for fallback (default: AMPERE_24,ADA_24)")
+    # Cloud GPU
+    cloud_group = parser.add_argument_group("Cloud GPU")
+    cloud_group.add_argument("--cloud", type=str, default="runpod", choices=["runpod", "modal"],
+                             help="Cloud GPU provider (default: runpod)")
+    cloud_group.add_argument("--setup", action="store_true", help="Set up cloud endpoint")
+    cloud_group.add_argument("--setup-gpu", type=str, default="AMPERE_24,ADA_24",
+                             help="GPU type(s) for RunPod endpoint (default: AMPERE_24,ADA_24)")
 
     # Output format
     parser.add_argument("--json", action="store_true", help="Output result as JSON")
@@ -1013,6 +1035,7 @@ Examples:
             guidance=args.guidance,
             open_result=not args.no_open,
             verbose=args.verbose,
+            cloud=args.cloud,
         )
     else:
         # Generate mode
@@ -1026,6 +1049,7 @@ Examples:
             guidance=args.guidance,
             open_result=not args.no_open,
             verbose=args.verbose,
+            cloud=args.cloud,
         )
 
 

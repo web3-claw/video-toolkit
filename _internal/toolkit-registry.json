@@ -444,6 +444,30 @@
       },
       "created": "2025-12-30",
       "updated": "2026-03-22"
+    },
+    "modal": {
+      "name": "Modal",
+      "description": "Serverless GPU cloud with Python-native deployment and fast cold starts",
+      "documentation": "docs/modal-setup.md",
+      "envVars": ["MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"],
+      "endpoints": {
+        "qwen3-tts": {
+          "appFile": "docker/modal-qwen3-tts/app.py",
+          "envVar": "MODAL_QWEN3_TTS_ENDPOINT_URL",
+          "operations": ["qwen3_tts"],
+          "gpu": "A10G",
+          "estimatedCost": "$0.005-0.10 per generation"
+        },
+        "flux2": {
+          "appFile": "docker/modal-flux2/app.py",
+          "envVar": "MODAL_FLUX2_ENDPOINT_URL",
+          "operations": ["flux2"],
+          "gpu": "A10G",
+          "estimatedCost": "$0.01-0.03 per image"
+        }
+      },
+      "created": "2026-03-23",
+      "updated": "2026-03-23"
     }
   },
 

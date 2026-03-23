@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-Generate speech using Qwen3-TTS (via RunPod serverless).
+Generate speech using Qwen3-TTS (via cloud GPU).
 
 Supports built-in speakers with emotion control and voice cloning from reference audio.
+Cloud providers: RunPod (default), Modal.
 
 Usage:
-    # Built-in speaker
+    # Built-in speaker (RunPod, default)
     python tools/qwen3_tts.py --text "Hello world" --speaker Ryan --output hello.mp3
+
+    # Using Modal instead of RunPod
+    python tools/qwen3_tts.py --text "Hello world" --cloud modal --output hello.mp3
 
     # With tone preset
     python tools/qwen3_tts.py --text "Hello world" --tone warm --output hello.mp3
@@ -23,18 +27,22 @@ Usage:
     # List built-in voices
     python tools/qwen3_tts.py --list-voices
 
-    # Setup endpoint
+    # Setup endpoint (RunPod)
     python tools/qwen3_tts.py --setup
 
-Setup:
-    1. Create account at runpod.io
-    2. Run: python tools/qwen3_tts.py --setup
-    3. Or manually deploy docker/runpod-qwen3-tts/ and add endpoint ID to .env
+    # Setup endpoint (Modal)
+    python tools/qwen3_tts.py --setup --cloud modal
 
-Cost:
-    - ~$0.005 per sentence
-    - ~$0.05-0.10 per page of text
-    - Uses RTX 4090 ($0.00074/sec) by default
+Setup:
+    RunPod:
+        1. Create account at runpod.io
+        2. Run: python tools/qwen3_tts.py --setup
+        3. Or manually deploy docker/runpod-qwen3-tts/ and add endpoint ID to .env
+
+    Modal:
+        1. pip install modal && python3 -m modal setup
+        2. Run: python tools/qwen3_tts.py --setup --cloud modal
+        3. Or manually: modal deploy docker/modal-qwen3-tts/app.py
 """
 
 import argparse
@@ -463,25 +471,20 @@ def generate_audio(
     verbose: bool = True,
     temperature: float | None = None,
     top_p: float | None = None,
+    cloud: str = "runpod",
 ) -> dict:
-    """Generate audio using Qwen3-TTS via RunPod.
+    """Generate audio using Qwen3-TTS via cloud GPU.
 
     This is the main entry point, importable by voiceover.py.
     Returns dict with: success, output, duration_seconds, duration_frames_30fps
+
+    Args:
+        cloud: Cloud provider — "runpod" (default) or "modal".
     """
     start_time = time.time()
     r2_keys_to_cleanup = []
 
-    config = get_runpod_config()
-    api_key = config.get("api_key")
-    endpoint_id = config.get("endpoint_id")
-
-    if not api_key:
-        return {"success": False, "error": "RUNPOD_API_KEY not set. Add to .env file."}
-    if not endpoint_id:
-        return {"success": False, "error": "RUNPOD_QWEN3_TTS_ENDPOINT_ID not set. Run with --setup first."}
-
-    # Get R2 config
+    # Get R2 config (used for file transfer regardless of cloud provider)
     sys.path.insert(0, str(Path(__file__).parent))
     try:
         from config import get_r2_config
@@ -507,57 +510,60 @@ def generate_audio(
             r2_keys_to_cleanup.append(ref_r2_key)
 
     if verbose:
-        print(f"Using RunPod endpoint: {endpoint_id}", file=sys.stderr)
+        print(f"Cloud provider: {cloud}", file=sys.stderr)
         if mode == "clone":
             print(f"Mode: voice clone", file=sys.stderr)
         else:
             print(f"Speaker: {speaker}, Language: {language}", file=sys.stderr)
 
-    # Submit job
-    job_response = submit_runpod_job(
-        endpoint_id=endpoint_id,
-        api_key=api_key,
-        text=text,
-        mode=mode,
-        speaker=speaker,
-        language=language,
-        instruct=instruct,
-        ref_audio_url=ref_audio_url,
-        ref_text=ref_text,
-        output_format=output_format,
-        r2_config=r2_config,
-        temperature=temperature,
-        top_p=top_p,
-    )
+    # Build payload (same format for both providers)
+    payload = {
+        "input": {
+            "text": text,
+            "mode": mode,
+            "language": language,
+            "output_format": output_format,
+        }
+    }
 
-    if not job_response:
-        return {"success": False, "error": "Failed to submit job"}
+    if mode == "clone":
+        payload["input"]["ref_audio_url"] = ref_audio_url
+        payload["input"]["ref_text"] = ref_text
+    else:
+        payload["input"]["speaker"] = speaker
+        if instruct:
+            payload["input"]["instruct"] = instruct
 
-    job_id = job_response.get("id")
-    if not job_id:
-        return {"success": False, "error": f"No job ID in response: {job_response}"}
+    if temperature is not None:
+        payload["input"]["temperature"] = temperature
+    if top_p is not None:
+        payload["input"]["top_p"] = top_p
 
-    if verbose:
-        print(f"Job submitted: {job_id}", file=sys.stderr)
+    if r2_config:
+        payload["input"]["r2"] = {
+            "endpoint_url": r2_config["endpoint_url"],
+            "access_key_id": r2_config["access_key_id"],
+            "secret_access_key": r2_config["secret_access_key"],
+            "bucket_name": r2_config["bucket_name"],
+        }
 
-    # Poll for completion
-    result = poll_runpod_job(
-        endpoint_id=endpoint_id,
-        api_key=api_key,
-        job_id=job_id,
+    # Submit job via cloud_gpu abstraction
+    try:
+        from cloud_gpu import call_cloud_endpoint
+    except ImportError:
+        sys.path.insert(0, str(Path(__file__).parent))
+        from cloud_gpu import call_cloud_endpoint
+
+    output, elapsed = call_cloud_endpoint(
+        provider=cloud,
+        payload=payload,
+        tool_name="qwen3_tts",
         timeout=timeout,
+        poll_interval=3,
+        progress_label="Generating speech",
         verbose=verbose,
     )
 
-    if not result:
-        return {"success": False, "error": "Job timed out or failed to get status"}
-
-    status = result.get("status")
-    if status != "COMPLETED":
-        error = result.get("error") or result.get("output", {}).get("error") or "Unknown error"
-        return {"success": False, "error": f"Job failed: {error}"}
-
-    output = result.get("output", {})
     if isinstance(output, dict) and output.get("error"):
         return {"success": False, "error": output["error"]}
 
@@ -921,14 +927,172 @@ def setup_runpod(gpu_id: str = "AMPERE_24", verbose: bool = True) -> dict:
     return result
 
 
+# =============================================================================
+# Modal Setup
+# =============================================================================
+
+def setup_modal(verbose: bool = True) -> dict:
+    """Set up Modal endpoint for Qwen3-TTS.
+
+    Deploys the Modal app and saves the endpoint URL to .env.
+    Requires: pip install modal && python3 -m modal setup
+    """
+    import shutil
+    import subprocess
+
+    result = {
+        "success": False,
+        "endpoint_url": None,
+    }
+
+    if verbose:
+        print("=" * 60)
+        print("Modal Setup (Qwen3-TTS Speech Generation)")
+        print("=" * 60)
+        print()
+
+    # Check modal CLI is installed
+    if not shutil.which("modal"):
+        result["error"] = (
+            "Modal CLI not found. Install with:\n"
+            "  pip install modal\n"
+            "  python3 -m modal setup"
+        )
+        if verbose:
+            print(f"Error: {result['error']}", file=sys.stderr)
+        return result
+
+    # Find the app file
+    app_file = Path(__file__).parent.parent / "docker" / "modal-qwen3-tts" / "app.py"
+    if not app_file.exists():
+        result["error"] = f"Modal app file not found: {app_file}"
+        if verbose:
+            print(f"Error: {result['error']}", file=sys.stderr)
+        return result
+
+    if verbose:
+        print(f"[1/3] Deploying Modal app: {app_file}")
+        print("  This will build the container image and create the web endpoint.")
+        print("  First deploy may take 5-10 minutes (downloading model weights)...")
+        print()
+
+    try:
+        deploy_result = subprocess.run(
+            ["modal", "deploy", str(app_file)],
+            capture_output=True,
+            text=True,
+            timeout=900,  # 15 min for first deploy with model download
+        )
+
+        if deploy_result.returncode != 0:
+            result["error"] = f"Modal deploy failed:\n{deploy_result.stderr}"
+            if verbose:
+                print(f"Error: {result['error']}", file=sys.stderr)
+            return result
+
+        if verbose:
+            print(deploy_result.stdout)
+
+        # Parse endpoint URL from deploy output
+        # Modal prints lines like: Created web endpoint ... => https://workspace--app-name-fn.modal.run
+        endpoint_url = None
+        for line in deploy_result.stdout.splitlines():
+            if "modal.run" in line:
+                # Extract URL from the line
+                import re
+                urls = re.findall(r'https://[^\s"\']+modal\.run[^\s"\']*', line)
+                if urls:
+                    endpoint_url = urls[0]
+                    break
+
+        if not endpoint_url:
+            # Try stderr too (some modal versions output there)
+            for line in deploy_result.stderr.splitlines():
+                if "modal.run" in line:
+                    import re
+                    urls = re.findall(r'https://[^\s"\']+modal\.run[^\s"\']*', line)
+                    if urls:
+                        endpoint_url = urls[0]
+                        break
+
+        if not endpoint_url:
+            result["error"] = (
+                "Deploy succeeded but could not parse endpoint URL from output.\n"
+                "Check `modal app list` for the URL and add to .env manually:\n"
+                "  MODAL_QWEN3_TTS_ENDPOINT_URL=https://your-workspace--video-toolkit-qwen3-tts-qwen3tts-generate.modal.run"
+            )
+            if verbose:
+                print(f"Warning: {result['error']}", file=sys.stderr)
+            return result
+
+        result["endpoint_url"] = endpoint_url
+
+        if verbose:
+            print(f"[2/3] Endpoint URL: {endpoint_url}")
+            print("[3/3] Saving configuration...")
+
+        # Save to .env
+        env_path = Path(__file__).parent.parent / ".env"
+        env_var = "MODAL_QWEN3_TTS_ENDPOINT_URL"
+
+        if env_path.exists():
+            env_content = env_path.read_text()
+            if env_var in env_content:
+                # Update existing
+                lines = env_content.splitlines()
+                updated = False
+                for i, line in enumerate(lines):
+                    if line.startswith(f"{env_var}="):
+                        lines[i] = f"{env_var}={endpoint_url}"
+                        updated = True
+                        break
+                if updated:
+                    env_path.write_text("\n".join(lines) + "\n")
+            else:
+                with open(env_path, "a") as f:
+                    f.write(f"\n{env_var}={endpoint_url}\n")
+        else:
+            env_path.write_text(f"{env_var}={endpoint_url}\n")
+
+        if verbose:
+            print(f"  Saved: {env_var}={endpoint_url}")
+
+        result["success"] = True
+
+        if verbose:
+            print()
+            print("=" * 60)
+            print("Setup Complete!")
+            print("=" * 60)
+            print(f"Endpoint: {endpoint_url}")
+            print()
+            print("You can now run:")
+            print('  python tools/qwen3_tts.py --text "Hello world" --cloud modal --output hello.mp3')
+            print()
+
+    except subprocess.TimeoutExpired:
+        result["error"] = "Modal deploy timed out after 15 minutes"
+        if verbose:
+            print(f"Error: {result['error']}", file=sys.stderr)
+    except Exception as e:
+        result["error"] = str(e)
+        if verbose:
+            print(f"Error: {e}", file=sys.stderr)
+
+    return result
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Generate speech using Qwen3-TTS (via RunPod)",
+        description="Generate speech using Qwen3-TTS (via cloud GPU)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Built-in speaker
+  # Built-in speaker (RunPod, default)
   python tools/qwen3_tts.py --text "Hello world" --speaker Ryan --output hello.mp3
+
+  # Using Modal instead
+  python tools/qwen3_tts.py --text "Hello world" --cloud modal --output hello.mp3
 
   # With emotion control
   python tools/qwen3_tts.py --text "Great news!" --instruct "Speak enthusiastically" --output excited.mp3
@@ -939,8 +1103,11 @@ Examples:
   # List voices
   python tools/qwen3_tts.py --list-voices
 
-  # Setup endpoint
+  # Setup endpoint (RunPod)
   python tools/qwen3_tts.py --setup
+
+  # Setup endpoint (Modal)
+  python tools/qwen3_tts.py --setup --cloud modal
         """,
     )
 
@@ -1012,17 +1179,24 @@ Examples:
         help="Nucleus sampling (default: model default ~0.8, range: 0.1-1.0)",
     )
 
-    # RunPod options
+    # Cloud GPU options
+    parser.add_argument(
+        "--cloud",
+        type=str,
+        default="runpod",
+        choices=["runpod", "modal"],
+        help="Cloud GPU provider (default: runpod)",
+    )
     parser.add_argument(
         "--timeout",
         type=int,
         default=300,
-        help="RunPod job timeout in seconds (default: 300)",
+        help="Job timeout in seconds (default: 300)",
     )
     parser.add_argument(
         "--setup",
         action="store_true",
-        help="Set up RunPod endpoint automatically",
+        help="Set up cloud endpoint automatically",
     )
     parser.add_argument(
         "--setup-gpu",
@@ -1090,7 +1264,10 @@ def main():
 
     # Handle --setup
     if args.setup:
-        result = setup_runpod(gpu_id=args.setup_gpu, verbose=verbose)
+        if args.cloud == "modal":
+            result = setup_modal(verbose=verbose)
+        else:
+            result = setup_runpod(gpu_id=args.setup_gpu, verbose=verbose)
         if args.json:
             print(json.dumps(result, indent=2))
         if result.get("error"):
@@ -1147,6 +1324,7 @@ def main():
         verbose=verbose,
         temperature=args.temperature,
         top_p=args.top_p,
+        cloud=args.cloud,
     )
 
     if not result.get("success"):
