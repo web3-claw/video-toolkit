@@ -464,6 +464,34 @@
           "operations": ["flux2"],
           "gpu": "A10G",
           "estimatedCost": "$0.01-0.03 per image"
+        },
+        "upscale": {
+          "appFile": "docker/modal-upscale/app.py",
+          "envVar": "MODAL_UPSCALE_ENDPOINT_URL",
+          "operations": ["upscale"],
+          "gpu": "A10G",
+          "estimatedCost": "$0.005-0.02 per image"
+        },
+        "image-edit": {
+          "appFile": "docker/modal-image-edit/app.py",
+          "envVar": "MODAL_IMAGE_EDIT_ENDPOINT_URL",
+          "operations": ["image_edit"],
+          "gpu": "A100",
+          "estimatedCost": "$0.02-0.05 per image"
+        },
+        "music-gen": {
+          "appFile": "docker/modal-music-gen/app.py",
+          "envVar": "MODAL_MUSIC_GEN_ENDPOINT_URL",
+          "operations": ["music_gen"],
+          "gpu": "A10G",
+          "estimatedCost": "$0.02-0.10 per generation"
+        },
+        "sadtalker": {
+          "appFile": "docker/modal-sadtalker/app.py",
+          "envVar": "MODAL_SADTALKER_ENDPOINT_URL",
+          "operations": ["sadtalker"],
+          "gpu": "A10G",
+          "estimatedCost": "$0.05-0.30 per video"
         }
       },
       "created": "2026-03-23",
