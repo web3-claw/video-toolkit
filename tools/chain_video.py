@@ -98,6 +98,9 @@ def find_scene_images(scenes_dir, start, end):
     return images
 
 
+SCENE_TIMEOUT = 1200  # 20 minutes — generous buffer over ltx2's 15min cloud timeout
+
+
 def generate_scene(input_image, prompt, output_path, cloud, extra_args, use_progress):
     """Run ltx2.py to generate a video clip from an image."""
     cmd = [
@@ -111,9 +114,13 @@ def generate_scene(input_image, prompt, output_path, cloud, extra_args, use_prog
         cmd.extend(["--progress", "json"])
     cmd.extend(extra_args)
 
-    result = subprocess.run(cmd, capture_output=False)
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=SCENE_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"ltx2.py timed out after {SCENE_TIMEOUT}s for {output_path}")
     if result.returncode != 0:
-        raise RuntimeError(f"ltx2.py failed for {output_path}")
+        stderr_tail = result.stderr.decode(errors="replace")[-300:] if result.stderr else ""
+        raise RuntimeError(f"ltx2.py failed for {output_path}: {stderr_tail}")
     if not os.path.exists(output_path):
         raise RuntimeError(f"ltx2.py produced no output: {output_path}")
     return output_path
@@ -141,9 +148,13 @@ def main():
     # Load per-scene prompts if provided
     scene_prompts = {}
     if args.prompts_file:
-        with open(args.prompts_file) as f:
-            raw = json.load(f)
+        try:
+            with open(args.prompts_file) as f:
+                raw = json.load(f)
             scene_prompts = {int(k): v for k, v in raw.items()}
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"ERROR: Invalid prompts file {args.prompts_file}: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # Find scene images
     scene_images = {}
@@ -160,10 +171,11 @@ def main():
         prompt = scene_prompts.get(i, args.prompt)
         elapsed = time.time() - t0
 
-        # Skip if already exists (check exact name and glob for suffix variants like chain-05-title.mp4)
-        existing = glob.glob(os.path.join(args.output_dir, f"{args.prefix}-{curr}*.mp4"))
+        # Skip if already exists — prefer exact name, else glob for suffix variants (chain-05-brigid.mp4)
         if os.path.exists(output_path):
             existing = [output_path]
+        else:
+            existing = glob.glob(os.path.join(args.output_dir, f"{args.prefix}-{curr}-*.mp4"))
         if existing:
             found = existing[0]
             if use_progress:
@@ -223,6 +235,13 @@ def main():
                 print(f"ERROR: Scene {curr} failed: {e}")
             # Don't chain from a failed scene — keep prev_clip as is
             continue
+
+    # Clean up temporary frame files
+    for tmp in glob.glob(os.path.join(args.output_dir, ".frame-*.png")):
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
     elapsed = time.time() - t0
     if use_progress:

@@ -579,6 +579,31 @@
       "estimatedCost": "$0.20-0.25 per 5s clip",
       "created": "2026-03-25",
       "updated": "2026-03-25"
+    },
+    "chain_video": {
+      "path": "tools/chain_video.py",
+      "description": "Chain LTX-2 clips with visual continuity — each scene uses the last frame of the previous as input",
+      "usage": "python tools/chain_video.py --scenes-dir images/ --output-dir videos/ --prompt \"Cinematic flow\"",
+      "status": "beta",
+      "category": "video-generation",
+      "backend": "ltx-2.3-22b (via ltx2.py)",
+      "requires": "Modal account (same as ltx2)",
+      "options": {
+        "inputModes": [
+          "scenes-dir (numbered images)",
+          "first-clip (existing video)"
+        ],
+        "perScenePrompts": "--prompts-file scenes.json",
+        "resume": "auto-skips existing clips",
+        "progress": ["json", "human"],
+        "prefix": "chain (default)"
+      },
+      "envVars": [
+        "MODAL_LTX2_ENDPOINT_URL"
+      ],
+      "estimatedCost": "$0.20-0.25 per scene (delegates to ltx2)",
+      "created": "2026-04-04",
+      "updated": "2026-04-04"
     }
   },
   "optionalComponents": {
