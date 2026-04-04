@@ -160,14 +160,18 @@ def main():
         prompt = scene_prompts.get(i, args.prompt)
         elapsed = time.time() - t0
 
-        # Skip if already exists
+        # Skip if already exists (check exact name and glob for suffix variants like chain-05-title.mp4)
+        existing = glob.glob(os.path.join(args.output_dir, f"{args.prefix}-{curr}*.mp4"))
         if os.path.exists(output_path):
+            existing = [output_path]
+        if existing:
+            found = existing[0]
             if use_progress:
-                progress("item", f"Scene {curr} already exists, skipping", pct=round(completed / total * 100), elapsed=elapsed)
+                progress("item", f"Scene {curr} already exists ({os.path.basename(found)}), skipping", pct=round(completed / total * 100), elapsed=elapsed)
             else:
-                print(f"Scene {curr} already exists, skipping")
+                print(f"Scene {curr} already exists ({os.path.basename(found)}), skipping")
             completed += 1
-            prev_clip = output_path
+            prev_clip = found
             continue
 
         if use_progress:
