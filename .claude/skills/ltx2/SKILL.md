@@ -121,6 +121,29 @@ Bring still headshots to life:
 python3 tools/ltx2.py --prompt "Subtle natural head movement, warm expression, professional lighting" --input headshot.png --output animated_portrait.mp4
 ```
 
+### Stylized Character Cameo (SadTalker Alternative)
+For non-realistic faces — fantasy characters, masked figures, heavy beards, helmets, illustrations — SadTalker often produces uncanny or broken lip sync because it's trained on photoreal humans. LTX-2 image-to-video is frequently a better choice when **lip-sync precision isn't critical** (the viewer's brain fills in the gap as long as something is moving). Prompt for *motion + atmosphere*, not phonemes:
+
+```bash
+python3 tools/ltx2.py \
+  --input character_portrait.png \
+  --prompt "Ancient warrior speaks slowly with gravitas, beard shifts subtly, glowing aura pulses, embers drift past, slow head movement, cinematic close-up, mystical atmosphere" \
+  --width 768 --height 768 \
+  --output character_speaking.mp4
+```
+
+**When LTX-2 wins over SadTalker:**
+- Stylized / illustrated / fantasy characters
+- Heavy facial hair or accessories obscuring the mouth
+- Masked or helmeted figures
+- Short cameo lines where atmosphere matters more than precision
+- Dramatic VO rather than dialogue
+
+**When SadTalker still wins:**
+- Photoreal human presenters
+- Full sentences where mouth shape needs to match phonemes
+- Tutorials / talking-head explainers where the viewer is effectively reading lips
+
 ### Branded Intro/Outro
 Generate abstract motion backgrounds for title cards:
 ```bash

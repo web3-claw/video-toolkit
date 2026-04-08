@@ -64,6 +64,7 @@ Claude Code has deep knowledge in:
 | **qwen-edit** | AI image editing — prompting patterns and best practices |
 | **acestep** | AI music generation — prompts, lyrics, scene presets, video integration |
 | **ltx2** | AI video generation — text-to-video, image-to-video clips, prompting guide |
+| **moviepy** | Python video composition — overlay text on LTX-2/SadTalker output, build.py-style projects |
 | **runpod** | Cloud GPU — setup, Docker images, endpoint management, costs |
 
 ### Commands

@@ -75,7 +75,14 @@
       "description": "AI video generation — prompting guide, parameters, video production use cases (b-roll, animated slides, portraits)",
       "status": "beta",
       "created": "2026-03-25",
-      "updated": "2026-03-25"
+      "updated": "2026-04-08"
+    },
+    "moviepy": {
+      "path": ".claude/skills/moviepy/",
+      "description": "Python video composition with moviepy 2.x — overlaying text on LTX-2/SadTalker output, single-file build.py video projects",
+      "status": "beta",
+      "created": "2026-04-08",
+      "updated": "2026-04-08"
     }
   },
   "commands": {
