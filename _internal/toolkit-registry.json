@@ -578,14 +578,17 @@
           "fast"
         ],
         "steps": "15 (fast) to 30+ (standard)",
-        "seed": true
+        "seed": true,
+        "loras": [
+          "crt-terminal"
+        ]
       },
       "envVars": [
         "MODAL_LTX2_ENDPOINT_URL"
       ],
       "estimatedCost": "$0.20-0.25 per 5s clip",
       "created": "2026-03-25",
-      "updated": "2026-03-25"
+      "updated": "2026-04-21"
     },
     "chain_video": {
       "path": "tools/chain_video.py",

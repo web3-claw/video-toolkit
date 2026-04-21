@@ -42,6 +42,29 @@ python3 tools/ltx2.py --prompt "..." --seed 42 --output reproducible.mp4
 | `--seed` | random | Seed for reproducibility |
 | `--output` | auto | Output file path |
 | `--negative-prompt` | sensible default | What to avoid |
+| `--lora` | none | Style LoRA preset. Currently: `crt-terminal`. |
+
+## Style LoRAs
+
+Style LoRAs bias the output toward a specific visual aesthetic. They're baked into the Modal image and selected per-request; switching LoRAs forces a pipeline rebuild (~60s one-time cost per container lifetime per switch).
+
+### `crt-terminal` — CRT / pixel-art terminals
+
+Base: LTX-2.3 22B, trained by [@lovis93](https://huggingface.co/lovis93/crt-animation-terminal-ltx-2.3-lora) (Apache 2.0).
+
+```bash
+# Trigger word is auto-prepended — write the prompt normally
+python3 tools/ltx2.py --lora crt-terminal \
+  --prompt "a terminal typing out \"\\$ claude --continue\" character by character in glowing green pixel font, scanlines, phosphor glow, low choppy frame rate, hacker mood" \
+  --output crt_claude.mp4
+```
+
+**What the preset changes:**
+- Prepends `crtanim,` to the prompt (the LoRA's trigger word)
+- Defaults to 1024×1024, 121 frames (the ratio it was trained on)
+- Relaxes the default negative prompt so on-screen text isn't filtered out
+
+**Prompt pattern:** `<CRT aesthetic> → <color palette> → <animation style> → <subject> → <literal text in quotes> → <mood>`. Keep on-screen text to 1–3 words — the model can't render long strings reliably. The LoRA prefers static framing; ask for camera moves explicitly if you want them.
 
 ## Valid Frame Counts
 
